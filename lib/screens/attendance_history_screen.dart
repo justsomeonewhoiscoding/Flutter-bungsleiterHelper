@@ -5,14 +5,40 @@ import '../providers/app_provider.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/attendance_dialog.dart';
+import '../utils/app_strings.dart';
 
-class AttendanceHistoryScreen extends StatelessWidget {
+class AttendanceHistoryScreen extends StatefulWidget {
   final Training training;
 
   const AttendanceHistoryScreen({super.key, required this.training});
 
   @override
+  State<AttendanceHistoryScreen> createState() =>
+      _AttendanceHistoryScreenState();
+}
+
+class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
+  late Future<List<Attendance>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    _future = context
+        .read<AppProvider>()
+        .getAttendanceForTraining(widget.training.id!);
+  }
+
+  void _refresh() {
+    setState(_load);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -20,7 +46,7 @@ class AttendanceHistoryScreen extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          '${training.name} - Anwesenh...',
+          '${widget.training.name} - ${strings.attendanceHistoryShort}',
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
@@ -28,9 +54,7 @@ class AttendanceHistoryScreen extends StatelessWidget {
         ],
       ),
       body: FutureBuilder<List<Attendance>>(
-        future: context.read<AppProvider>().getAttendanceForTraining(
-          training.id!,
-        ),
+        future: _future,
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -41,7 +65,7 @@ class AttendanceHistoryScreen extends StatelessWidget {
           if (attendances.isEmpty) {
             return Center(
               child: Text(
-                'Keine Einträge vorhanden',
+                strings.noEntries,
                 style: TextStyle(color: AppTheme.textSecondary),
               ),
             );
@@ -53,35 +77,81 @@ class AttendanceHistoryScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final attendance = attendances[index];
               return _AttendanceListItem(
-                training: training,
+                training: widget.training,
                 attendance: attendance,
+                onUpdated: _refresh,
               );
             },
           );
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // Manuellen Eintrag hinzufügen
-        },
+        onPressed: _addHistoricEntry,
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  Future<void> _addHistoricEntry() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+
+    final attendance = await context.read<AppProvider>().ensureAttendanceForTrainingDate(
+          trainingId: widget.training.id!,
+          date: picked,
+        );
+
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (_) => AttendanceDialog(
+        title: widget.training.name,
+        date: picked,
+        attendance: attendance,
+      ),
+    );
+    _refresh();
   }
 }
 
 class _AttendanceListItem extends StatelessWidget {
   final Training training;
   final Attendance attendance;
+  final VoidCallback onUpdated;
 
-  const _AttendanceListItem({required this.training, required this.attendance});
+  const _AttendanceListItem({
+    required this.training,
+    required this.attendance,
+    required this.onUpdated,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
+    final isPresent = attendance.status == AttendanceStatus.present;
+    final isAbsent = attendance.status == AttendanceStatus.absent;
+    final accentColor = isPresent
+        ? AppTheme.successColor
+        : isAbsent
+        ? AppTheme.errorColor
+        : AppTheme.textSecondary.withValues(alpha: 0.4);
+    final backgroundColor = isPresent
+        ? AppTheme.successLight.withValues(alpha: 0.15)
+        : isAbsent
+        ? AppTheme.errorLight.withValues(alpha: 0.15)
+        : AppTheme.cardColor;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: AppTheme.cardColor,
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: InkWell(
@@ -95,7 +165,7 @@ class _AttendanceListItem extends StatelessWidget {
                 width: 4,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppTheme.accentRed,
+                  color: accentColor,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -118,6 +188,14 @@ class _AttendanceListItem extends StatelessWidget {
                         fontSize: 14,
                       ),
                     ),
+                    if (isPresent && attendance.lateMinutes > 0)
+                      Text(
+                        strings.lateLabel(attendance.lateMinutes),
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -129,8 +207,8 @@ class _AttendanceListItem extends StatelessWidget {
     );
   }
 
-  void _editAttendance(BuildContext context) {
-    showDialog(
+  void _editAttendance(BuildContext context) async {
+    await showDialog(
       context: context,
       builder: (_) => AttendanceDialog(
         title: training.name,
@@ -138,6 +216,7 @@ class _AttendanceListItem extends StatelessWidget {
         attendance: attendance,
       ),
     );
+    onUpdated();
   }
 }
 
@@ -148,16 +227,17 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
     if (status == AttendanceStatus.pending) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: AppTheme.textSecondary.withOpacity(0.2),
+          color: AppTheme.textSecondary.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Text(
-          '?',
-          style: TextStyle(
+        child: Text(
+          strings.statusOpen,
+          style: const TextStyle(
             color: AppTheme.textSecondary,
             fontWeight: FontWeight.bold,
           ),
@@ -177,7 +257,7 @@ class _StatusBadge extends StatelessWidget {
         ),
       ),
       child: Text(
-        isPresent ? 'JA' : 'NEIN',
+        isPresent ? strings.yes : strings.no,
         style: TextStyle(
           color: isPresent ? AppTheme.successColor : AppTheme.errorColor,
           fontWeight: FontWeight.bold,

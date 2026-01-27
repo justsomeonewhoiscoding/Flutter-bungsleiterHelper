@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_strings.dart';
 
 class AddTrainingScreen extends StatefulWidget {
   const AddTrainingScreen({super.key});
@@ -17,16 +18,6 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
 
-  final List<String> _weekdayLabels = [
-    'Mo',
-    'Di',
-    'Mi',
-    'Do',
-    'Fr',
-    'Sa',
-    'So',
-  ];
-
   @override
   void dispose() {
     _nameController.dispose();
@@ -35,13 +26,15 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
+    final weekdayLabels = strings.weekdayShort;
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Training hinzufügen'),
+        title: Text(strings.addTrainingTitle),
         actions: [
           IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
         ],
@@ -59,10 +52,10 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
               ),
               child: TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(
-                  hintText: 'Name (z.B. Kinderturnen)',
+                decoration: InputDecoration(
+                  hintText: strings.trainingNameHint,
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.all(16),
+                  contentPadding: const EdgeInsets.all(16),
                 ),
               ),
             ),
@@ -78,9 +71,9 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Wochentage',
-                    style: TextStyle(
+                  Text(
+                    strings.weekdaysLabel,
+                    style: const TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 14,
                     ),
@@ -116,11 +109,11 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
                             border: Border.all(
                               color: isSelected
                                   ? AppTheme.primaryColor
-                                  : AppTheme.textSecondary.withOpacity(0.3),
+                                  : AppTheme.textSecondary.withValues(alpha: 0.3),
                             ),
                           ),
                           child: Text(
-                            _weekdayLabels[index],
+                            weekdayLabels[index],
                             style: TextStyle(
                               color: isSelected
                                   ? AppTheme.textOnPrimary
@@ -148,7 +141,7 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
                 children: [
                   Expanded(
                     child: _TimeSelector(
-                      label: 'Startzeit',
+                      label: strings.startTimeLabel,
                       time: _startTime,
                       onTap: () => _selectTime(true),
                     ),
@@ -162,7 +155,7 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
                   ),
                   Expanded(
                     child: _TimeSelector(
-                      label: 'Endzeit',
+                      label: strings.endTimeLabel,
                       time: _endTime,
                       onTap: () => _selectTime(false),
                     ),
@@ -178,7 +171,7 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
           padding: const EdgeInsets.all(16),
           child: ElevatedButton(
             onPressed: _canSave ? _save : null,
-            child: const Text('Speichern'),
+            child: Text(strings.save),
           ),
         ),
       ),
@@ -215,7 +208,30 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
   }
 
   void _save() {
-    if (!_canSave) return;
+    final strings = AppStrings.of(context);
+    if (_nameController.text.isEmpty ||
+        _startTime == null ||
+        _endTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.validationMissingFields)),
+      );
+      return;
+    }
+    if (_selectedWeekdays.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.validationSelectWeekday)),
+      );
+      return;
+    }
+
+    final startMinutes = _startTime!.hour * 60 + _startTime!.minute;
+    final endMinutes = _endTime!.hour * 60 + _endTime!.minute;
+    if (endMinutes <= startMinutes) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.validationEndAfterStart)),
+      );
+      return;
+    }
 
     final training = Training(
       name: _nameController.text,

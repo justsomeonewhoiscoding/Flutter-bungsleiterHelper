@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'dart:io';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import '../models/models.dart';
+import 'database_service.dart';
+import 'planko_service.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -57,12 +61,24 @@ class NotificationService {
       importance: Importance.high,
       playSound: true,
     );
+    const savedChannel = AndroidNotificationChannel(
+      'training_saved',
+      'Training gespeichert',
+      description: 'Bestätigung nach dem Speichern',
+      importance: Importance.low,
+      playSound: false,
+    );
 
     await _notifications
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >()
         ?.createNotificationChannel(channel);
+    await _notifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(savedChannel);
   }
 
   static void _onNotificationResponse(NotificationResponse response) {
@@ -81,10 +97,69 @@ class NotificationService {
     final attendanceId = int.tryParse(payload);
     if (attendanceId == null) return;
 
-    if (response.actionId == actionYes) {
-      onAttendanceAction?.call(attendanceId, true);
-    } else if (response.actionId == actionNo) {
-      onAttendanceAction?.call(attendanceId, false);
+    final wasPresent = response.actionId == actionYes;
+    final wasAbsent = response.actionId == actionNo;
+    if (!wasPresent && !wasAbsent) return;
+
+    if (onAttendanceAction != null) {
+      onAttendanceAction?.call(attendanceId, wasPresent);
+    } else {
+      unawaited(_updateAttendanceInBackground(attendanceId, wasPresent));
+    }
+  }
+
+  static Future<void> _updateAttendanceInBackground(
+    int attendanceId,
+    bool wasPresent,
+  ) async {
+    WidgetsFlutterBinding.ensureInitialized();
+    final db = DatabaseService();
+    final attendance = await db.getAttendanceById(attendanceId);
+    if (attendance == null) return;
+    final previousStatus = attendance.status;
+    final updated = attendance.copyWith(
+      status: wasPresent ? AttendanceStatus.present : AttendanceStatus.absent,
+      answeredAt: DateTime.now(),
+      lateMinutes: wasPresent ? attendance.lateMinutes : 0,
+    );
+    await db.updateAttendance(updated);
+    await _updatePlankoForAttendance(updated, previousStatus, db);
+    await NotificationService().showSavedNotification();
+  }
+
+  static Future<void> _updatePlankoForAttendance(
+    Attendance updated,
+    AttendanceStatus previousStatus,
+    DatabaseService db,
+  ) async {
+    if (updated.id == null) return;
+    final plankoService = PlankoService();
+    if (updated.status == AttendanceStatus.present) {
+      if (updated.trainingId != null) {
+        final training = await db.getTrainingById(updated.trainingId!);
+        if (training == null) return;
+        await plankoService.writeAttendanceEntry(
+          attendanceId: updated.id!,
+          name: training.name,
+          date: updated.date,
+          startTime: training.startTime,
+          endTime: training.endTime,
+        );
+      } else if (updated.eventId != null) {
+        final event = await db.getEventById(updated.eventId!);
+        if (event == null) return;
+        await plankoService.writeAttendanceEntry(
+          attendanceId: updated.id!,
+          name: event.name,
+          date: updated.date,
+          startTime: event.startTime,
+          endTime: event.endTime,
+        );
+      }
+    } else if (previousStatus == AttendanceStatus.present) {
+      await plankoService.removeAttendanceEntry(
+        attendanceId: updated.id!,
+      );
     }
   }
 
@@ -126,10 +201,6 @@ class NotificationService {
 
     // Nicht in der Vergangenheit planen
     if (scheduledTime.isBefore(DateTime.now())) return;
-
-    final timeParts = training.startTime.split(':');
-    final startHour = int.parse(timeParts[0]);
-    final startMinute = int.parse(timeParts[1]);
 
     final notificationDetails = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -262,6 +333,8 @@ class NotificationService {
 
   /// Zeigt eine sofortige Test-Benachrichtigung
   Future<void> showTestNotification() async {
+    debugPrint('NotificationService: showTestNotification called');
+
     const notificationDetails = NotificationDetails(
       android: AndroidNotificationDetails(
         'training_reminders',
@@ -289,10 +362,172 @@ class NotificationService {
       ),
     );
 
+    try {
+      await _notifications.show(
+        0,
+        'Test Training',
+        'Training um 18:00 Uhr - Bist du dabei?',
+        notificationDetails,
+      );
+      debugPrint('NotificationService: Notification sent successfully');
+    } catch (e) {
+      debugPrint('NotificationService: Error sending notification: $e');
+      rethrow;
+    }
+  }
+
+  /// Plant eine Benachrichtigung, wenn das Training vorbei ist
+  Future<void> scheduleTrainingEndNotification({
+    required Attendance attendance,
+    required Training training,
+    String? body,
+    String? actionYesLabel,
+    String? actionNoLabel,
+  }) async {
+    if (attendance.id == null) return;
+
+    final timeParts = training.endTime.split(':');
+    final endHour = int.parse(timeParts[0]);
+    final endMinute = int.parse(timeParts[1]);
+
+    final scheduledTime = DateTime(
+      attendance.date.year,
+      attendance.date.month,
+      attendance.date.day,
+      endHour,
+      endMinute,
+    );
+
+    if (scheduledTime.isBefore(DateTime.now())) return;
+
+    final notificationDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'training_reminders',
+        'Training Erinnerungen',
+        channelDescription: 'Erinnerungen vor anstehenden Trainings',
+        importance: Importance.high,
+        priority: Priority.high,
+        actions: [
+          AndroidNotificationAction(
+            actionYes,
+            actionYesLabel ?? 'Ja, war da',
+            showsUserInterface: false,
+          ),
+          AndroidNotificationAction(
+            actionNo,
+            actionNoLabel ?? 'Nein',
+            showsUserInterface: false,
+          ),
+        ],
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
+
+    await _notifications.zonedSchedule(
+      attendance.id!,
+      training.name,
+      body ?? 'Training ist vorbei - warst du dabei?',
+      tz.TZDateTime.from(scheduledTime, tz.local),
+      notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: attendance.id!.toString(),
+      matchDateTimeComponents: null,
+    );
+  }
+
+  Future<void> scheduleEventEndNotification({
+    required Attendance attendance,
+    required Event event,
+    String? body,
+    String? actionYesLabel,
+    String? actionNoLabel,
+  }) async {
+    if (attendance.id == null) return;
+
+    final timeParts = event.endTime.split(':');
+    final endHour = int.parse(timeParts[0]);
+    final endMinute = int.parse(timeParts[1]);
+
+    final scheduledTime = DateTime(
+      attendance.date.year,
+      attendance.date.month,
+      attendance.date.day,
+      endHour,
+      endMinute,
+    );
+
+    if (scheduledTime.isBefore(DateTime.now())) return;
+
+    final notificationDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'training_reminders',
+        'Training Erinnerungen',
+        channelDescription: 'Erinnerungen vor anstehenden Trainings',
+        importance: Importance.high,
+        priority: Priority.high,
+        actions: [
+          AndroidNotificationAction(
+            actionYes,
+            actionYesLabel ?? 'Ja, war da',
+            showsUserInterface: false,
+          ),
+          AndroidNotificationAction(
+            actionNo,
+            actionNoLabel ?? 'Nein',
+            showsUserInterface: false,
+          ),
+        ],
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
+
+    await _notifications.zonedSchedule(
+      attendance.id!,
+      event.name,
+      body ?? 'Training ist vorbei - warst du dabei?',
+      tz.TZDateTime.from(scheduledTime, tz.local),
+      notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: attendance.id!.toString(),
+      matchDateTimeComponents: null,
+    );
+  }
+
+  Future<void> cancelAttendanceNotification(int attendanceId) async {
+    await _notifications.cancel(attendanceId);
+  }
+
+  Future<void> showSavedNotification() async {
+    const notificationDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'training_saved',
+        'Training gespeichert',
+        channelDescription: 'Bestätigung nach dem Speichern',
+        importance: Importance.low,
+        priority: Priority.low,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: false,
+        presentSound: false,
+      ),
+    );
     await _notifications.show(
-      0,
-      'Test Training',
-      'Training um 18:00 Uhr - Bist du dabei?',
+      1,
+      'Gespeichert',
+      'Antwort wurde gespeichert',
       notificationDetails,
     );
   }

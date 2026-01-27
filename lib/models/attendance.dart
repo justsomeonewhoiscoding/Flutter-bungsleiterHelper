@@ -13,6 +13,7 @@ class Attendance {
   final DateTime date;
   final AttendanceStatus status;
   final DateTime? answeredAt;
+  final int lateMinutes;
 
   Attendance({
     this.id,
@@ -21,6 +22,7 @@ class Attendance {
     required this.date,
     this.status = AttendanceStatus.pending,
     this.answeredAt,
+    this.lateMinutes = 0,
   }) : assert(
          trainingId != null || eventId != null,
          'Entweder trainingId oder eventId muss gesetzt sein',
@@ -39,6 +41,7 @@ class Attendance {
       'date': date.toIso8601String(),
       'status': status.index,
       'answeredAt': answeredAt?.toIso8601String(),
+      'lateMinutes': lateMinutes,
     };
   }
 
@@ -52,6 +55,7 @@ class Attendance {
       answeredAt: map['answeredAt'] != null
           ? DateTime.parse(map['answeredAt'] as String)
           : null,
+      lateMinutes: (map['lateMinutes'] as int?) ?? 0,
     );
   }
 
@@ -62,6 +66,7 @@ class Attendance {
     DateTime? date,
     AttendanceStatus? status,
     DateTime? answeredAt,
+    int? lateMinutes,
   }) {
     return Attendance(
       id: id ?? this.id,
@@ -70,6 +75,7 @@ class Attendance {
       date: date ?? this.date,
       status: status ?? this.status,
       answeredAt: answeredAt ?? this.answeredAt,
+      lateMinutes: lateMinutes ?? this.lateMinutes,
     );
   }
 }

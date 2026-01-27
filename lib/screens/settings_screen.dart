@@ -1,23 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:open_filex/open_filex.dart';
 import '../providers/app_provider.dart';
 import '../theme/app_theme.dart';
 import '../services/planko_service.dart';
-import '../services/notification_service.dart';
+import 'onboarding_screen.dart';
+import 'archive_screen.dart';
+import '../utils/app_strings.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Einstellungen'),
+        title: Text(strings.settingsTitle),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: strings.featuresOverview,
+            onPressed: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => OnboardingScreen()));
+            },
+          ),
+        ],
       ),
       body: Consumer<AppProvider>(
         builder: (context, provider, _) {
@@ -28,18 +43,18 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 // Dokument Section
                 _SectionCard(
-                  title: 'Dokument',
+                  title: strings.documentSection,
                   children: [
                     _SettingsButton(
-                      label: 'DOCX-Template auswählen',
+                      label: strings.selectTemplate,
                       isPrimary: true,
                       onTap: () => _selectTemplate(context),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       provider.settings.customTemplatePath != null
-                          ? 'Custom Template ausgewählt'
-                          : 'Standard RTV-DOCX Template wird genutzt',
+                          ? strings.customTemplateSelected
+                          : strings.defaultTemplateUsed,
                       style: TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 14,
@@ -51,26 +66,26 @@ class SettingsScreen extends StatelessWidget {
 
                 // Archiv Section
                 _SectionCard(
-                  title: 'Archiv',
+                  title: strings.archiveSection,
                   children: [
                     _SettingsButton(
-                      label: 'Aktuelles Planko öffnen',
+                      label: strings.openPlanko,
                       isPrimary: true,
                       onTap: () => _openPlanko(context),
                     ),
                     const SizedBox(height: 8),
                     _SettingsButton(
-                      label: 'Aktuelles Planko teilen / speichern',
+                      label: strings.sharePlanko,
                       onTap: () => _sharePlanko(context),
                     ),
                     const SizedBox(height: 8),
                     _SettingsButton(
-                      label: 'Archiv als ZIP teilen',
+                      label: strings.shareArchive,
                       onTap: () => _shareArchive(context),
                     ),
                     const SizedBox(height: 8),
                     _SettingsButton(
-                      label: 'Archiv verwalten',
+                      label: strings.manageArchive,
                       onTap: () => _manageArchive(context),
                     ),
                   ],
@@ -79,15 +94,21 @@ class SettingsScreen extends StatelessWidget {
 
                 // Sprache Section
                 _SectionCard(
-                  title: 'Sprache',
+                  title: strings.languageSection,
                   children: [
                     Text(
-                      'Aktuelle Sprache: ${provider.settings.language == 'de' ? 'Deutsch' : 'English'}',
+                      strings.currentLanguage(
+                        provider.settings.language == 'de'
+                            ? 'Deutsch'
+                            : provider.settings.language == 'en'
+                            ? 'English'
+                            : strings.systemLanguage,
+                      ),
                       style: const TextStyle(fontSize: 16),
                     ),
                     const SizedBox(height: 12),
                     _SettingsButton(
-                      label: 'Sprache ändern',
+                      label: strings.changeLanguage,
                       onTap: () => _changeLanguage(context),
                     ),
                   ],
@@ -98,18 +119,18 @@ class SettingsScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppTheme.errorLight.withOpacity(0.1),
+                    color: AppTheme.errorLight.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: AppTheme.errorColor.withOpacity(0.3),
+                      color: AppTheme.errorColor.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Gefahrenzone',
-                        style: TextStyle(
+                      Text(
+                        strings.dangerZone,
+                        style: const TextStyle(
                           color: AppTheme.errorColor,
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -117,9 +138,9 @@ class SettingsScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Diese Aktion kann nicht rückgängig gemacht werden.',
+                        strings.dangerZoneSubtitle,
                         style: TextStyle(
-                          color: AppTheme.errorColor.withOpacity(0.8),
+                          color: AppTheme.errorColor.withValues(alpha: 0.8),
                           fontSize: 14,
                         ),
                       ),
@@ -132,9 +153,9 @@ class SettingsScreen extends StatelessWidget {
                             Icons.refresh,
                             color: AppTheme.errorColor,
                           ),
-                          label: const Text(
-                            'Planko neu schreiben',
-                            style: TextStyle(color: AppTheme.errorColor),
+                          label: Text(
+                            strings.rewritePlanko,
+                            style: const TextStyle(color: AppTheme.errorColor),
                           ),
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: AppTheme.errorColor),
@@ -154,209 +175,156 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Future<void> _selectTemplate(BuildContext context) async {
+    final strings = AppStrings.of(context);
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['docx'],
     );
+    if (!context.mounted) return;
 
     if (result != null && result.files.single.path != null) {
+      final plankoService = PlankoService();
+      final isValid = await plankoService.validateTemplate(
+        result.files.single.path!,
+      );
+      if (!isValid) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(strings.templateInvalid)),
+        );
+        return;
+      }
+      if (!context.mounted) return;
       final provider = context.read<AppProvider>();
       await provider.updateSettings(
         provider.settings.copyWith(
           customTemplatePath: result.files.single.path,
         ),
       );
+      if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Template wurde gespeichert')),
+        SnackBar(content: Text(strings.templateSaved)),
       );
     }
   }
 
   void _openPlanko(BuildContext context) async {
-    final now = DateTime.now();
+    final strings = AppStrings.of(context);
     final plankoService = PlankoService();
+    final provider = context.read<AppProvider>();
 
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Planko wird erstellt...')));
+    ).showSnackBar(SnackBar(content: Text(strings.plankoCreating)));
 
-    final file = await plankoService.generateMonthlyPlanko(
-      year: now.year,
-      month: now.month,
+    final file = await plankoService.getCurrentPlanko(
+      customTemplatePath: provider.settings.customTemplatePath,
     );
 
-    if (file != null && context.mounted) {
+    if (!context.mounted) return;
+    if (file == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Planko erstellt: ${file.path.split('/').last}'),
-        ),
+        SnackBar(content: Text(strings.currentPlankoMissing)),
       );
+      return;
     }
+    await OpenFilex.open(file.path);
   }
 
   void _sharePlanko(BuildContext context) async {
-    final now = DateTime.now();
+    final strings = AppStrings.of(context);
     final plankoService = PlankoService();
+    final provider = context.read<AppProvider>();
 
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Planko wird erstellt...')));
-
-    final file = await plankoService.generateMonthlyPlanko(
-      year: now.year,
-      month: now.month,
+    ).showSnackBar(SnackBar(content: Text(strings.plankoCreating)));
+    await plankoService.shareCurrentPlanko(
+      customTemplatePath: provider.settings.customTemplatePath,
     );
-
-    if (file != null) {
-      await plankoService.sharePlanko(file);
-    } else if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Fehler beim Erstellen des Planko')),
-      );
-    }
   }
 
   void _shareArchive(BuildContext context) async {
+    final strings = AppStrings.of(context);
     final plankoService = PlankoService();
 
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Archiv wird erstellt...')));
+    ).showSnackBar(SnackBar(content: Text(strings.archiveCreating)));
 
     await plankoService.shareArchive();
   }
 
   void _manageArchive(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Archiv verwalten'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.notifications),
-              title: const Text('Test-Benachrichtigung'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final notificationService = NotificationService();
-                // Erst Berechtigung anfordern
-                final granted = await notificationService.requestPermission();
-                if (granted) {
-                  await notificationService.showTestNotification();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Benachrichtigung gesendet')),
-                    );
-                  }
-                } else {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Benachrichtigungsberechtigung wurde nicht erteilt'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.delete_forever,
-                color: AppTheme.errorColor,
-              ),
-              title: const Text('Archiv löschen'),
-              onTap: () async {
-                await PlankoService().clearArchive();
-                Navigator.pop(ctx);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Archiv gelöscht')),
-                  );
-                }
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Schließen'),
-          ),
-        ],
-      ),
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ArchiveScreen()),
     );
   }
 
   void _changeLanguage(BuildContext context) {
+    final strings = AppStrings.of(context);
     final provider = context.read<AppProvider>();
     final currentLang = provider.settings.language;
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Sprache wählen'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('Deutsch'),
-              leading: Radio<String>(
-                value: 'de',
-                groupValue: currentLang,
-                onChanged: (value) {
-                  provider.updateSettings(
-                    provider.settings.copyWith(language: value),
-                  );
-                  Navigator.pop(ctx);
-                },
+        title: Text(strings.chooseLanguage),
+        content: RadioGroup<String>(
+          groupValue: currentLang,
+          onChanged: (value) {
+            if (value == null) return;
+            provider.updateSettings(
+              provider.settings.copyWith(language: value),
+            );
+            Navigator.pop(ctx);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text('Deutsch'),
+                leading: Radio<String>(value: 'de'),
               ),
-            ),
-            ListTile(
-              title: const Text('English'),
-              leading: Radio<String>(
-                value: 'en',
-                groupValue: currentLang,
-                onChanged: (value) {
-                  provider.updateSettings(
-                    provider.settings.copyWith(language: value),
-                  );
-                  Navigator.pop(ctx);
-                },
+              const ListTile(
+                title: Text('English'),
+                leading: Radio<String>(value: 'en'),
               ),
-            ),
-          ],
+              ListTile(
+                title: Text(strings.systemLanguage),
+                leading: const Radio<String>(value: 'system'),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   void _confirmReset(BuildContext context) {
+    final strings = AppStrings.of(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Alle Daten löschen?'),
-        content: const Text(
-          'Alle Trainings, Events und Anwesenheitseinträge werden unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden!',
-        ),
+        title: Text(strings.deleteAllTitle),
+        content: Text(strings.deleteAllBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Abbrechen'),
+            child: Text(strings.cancel),
           ),
           TextButton(
             onPressed: () {
               context.read<AppProvider>().resetAllData();
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Alle Daten wurden gelöscht')),
+                SnackBar(content: Text(strings.allDataDeleted)),
               );
             },
-            child: const Text(
-              'Löschen',
-              style: TextStyle(color: AppTheme.errorColor),
+            child: Text(
+              strings.delete,
+              style: const TextStyle(color: AppTheme.errorColor),
             ),
           ),
         ],
@@ -416,7 +384,7 @@ class _SettingsButton extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppTheme.textSecondary,
                 side: BorderSide(
-                  color: AppTheme.textSecondary.withOpacity(0.3),
+                  color: AppTheme.textSecondary.withValues(alpha: 0.3),
                 ),
               ),
               child: Text(label),

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_strings.dart';
 
 class AddEventScreen extends StatefulWidget {
   const AddEventScreen({super.key});
@@ -26,13 +27,14 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Einmaliges Event'),
+        title: Text(strings.addEventTitle),
         actions: [
           IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
         ],
@@ -49,7 +51,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                 color: AppTheme.cardColor,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppTheme.textSecondary.withOpacity(0.2),
+                  color: AppTheme.textSecondary.withValues(alpha: 0.2),
                 ),
               ),
               child: Row(
@@ -62,7 +64,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: Text(
-                      'Erstelle ein einmaliges Event, das nur an einem bestimmten Datum stattfindet (z.B. Weihnachtsfeier, Sondertraining).',
+                      strings.addEventInfo,
                       style: TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 14,
@@ -85,8 +87,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
                 children: [
                   TextField(
                     controller: _nameController,
-                    decoration: const InputDecoration(
-                      hintText: 'Event-Name',
+                    decoration: InputDecoration(
+                      hintText: strings.eventNameHint,
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.zero,
                     ),
@@ -100,7 +102,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                         Text(
                           _selectedDate != null
                               ? DateFormat('dd.MM.yyyy').format(_selectedDate!)
-                              : 'Datum',
+                              : strings.dateLabel,
                           style: TextStyle(
                             color: _selectedDate != null
                                 ? AppTheme.textPrimary
@@ -138,7 +140,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                           Text(
                             _startTime != null
                                 ? _formatTime(_startTime!)
-                                : 'Startzeit',
+                                : strings.startTimeLabel,
                             style: TextStyle(
                               color: _startTime != null
                                   ? AppTheme.textPrimary
@@ -164,7 +166,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                           Text(
                             _endTime != null
                                 ? _formatTime(_endTime!)
-                                : 'Endzeit',
+                                : strings.endTimeLabel,
                             style: TextStyle(
                               color: _endTime != null
                                   ? AppTheme.textPrimary
@@ -192,7 +194,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
           padding: const EdgeInsets.all(16),
           child: ElevatedButton(
             onPressed: _canSave ? _save : null,
-            child: const Text('Speichern'),
+            child: Text(strings.save),
           ),
         ),
       ),
@@ -244,7 +246,25 @@ class _AddEventScreenState extends State<AddEventScreen> {
   }
 
   void _save() {
-    if (!_canSave) return;
+    final strings = AppStrings.of(context);
+    if (_nameController.text.isEmpty ||
+        _selectedDate == null ||
+        _startTime == null ||
+        _endTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.validationMissingFields)),
+      );
+      return;
+    }
+
+    final startMinutes = _startTime!.hour * 60 + _startTime!.minute;
+    final endMinutes = _endTime!.hour * 60 + _endTime!.minute;
+    if (endMinutes <= startMinutes) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.validationEndAfterStart)),
+      );
+      return;
+    }
 
     final event = Event(
       name: _nameController.text,

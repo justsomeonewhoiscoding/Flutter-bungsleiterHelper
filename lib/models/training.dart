@@ -64,4 +64,22 @@ class Training {
     const days = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
     return weekdays.map((d) => days[d - 1]).join(' ');
   }
+
+  int get weekdaysMask {
+    int mask = 0;
+    for (final day in weekdays) {
+      mask |= 1 << (day - 1);
+    }
+    return mask;
+  }
+
+  int get startMinutes {
+    final parts = startTime.split(':');
+    return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+  }
+
+  int get endMinutes {
+    final parts = endTime.split(':');
+    return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+  }
 }

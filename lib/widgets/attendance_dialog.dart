@@ -1,9 +1,11 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_strings.dart';
 
 class AttendanceDialog extends StatelessWidget {
   final String title;
@@ -19,6 +21,7 @@ class AttendanceDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
     return Dialog(
       backgroundColor: AppTheme.surfaceColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -73,7 +76,7 @@ class AttendanceDialog extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Warst du bei diesem Training?',
+                    strings.attendanceQuestion,
                     style: TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 14,
@@ -104,7 +107,7 @@ class AttendanceDialog extends StatelessWidget {
                         Icon(Icons.check, color: AppTheme.successColor),
                         const SizedBox(width: 12),
                         Text(
-                          'Ja, war da',
+                          strings.wasThere,
                           style: TextStyle(
                             color: AppTheme.successColor,
                             fontSize: 16,
@@ -139,7 +142,7 @@ class AttendanceDialog extends StatelessWidget {
                         Icon(Icons.close, color: AppTheme.errorColor),
                         const SizedBox(width: 12),
                         Text(
-                          'Nein, war nicht da',
+                          strings.wasNotThere,
                           style: TextStyle(
                             color: AppTheme.errorColor,
                             fontSize: 16,
@@ -159,7 +162,7 @@ class AttendanceDialog extends StatelessWidget {
               child: TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: Text(
-                  'Abbrechen',
+                  strings.cancel,
                   style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
                 ),
               ),
@@ -170,8 +173,90 @@ class AttendanceDialog extends StatelessWidget {
     );
   }
 
-  void _onAnswer(BuildContext context, AttendanceStatus status) {
-    context.read<AppProvider>().updateAttendanceStatus(attendance, status);
+  void _onAnswer(BuildContext context, AttendanceStatus status) async {
+    if (status == AttendanceStatus.present) {
+      final lateMinutes = await _selectLateMinutes(context);
+      if (lateMinutes == null) return;
+      if (!context.mounted) return;
+      context.read<AppProvider>().updateAttendanceStatus(
+        attendance,
+        status,
+        lateMinutes: lateMinutes,
+      );
+    } else {
+      context.read<AppProvider>().updateAttendanceStatus(attendance, status);
+    }
+    if (!context.mounted) return;
     Navigator.pop(context);
+  }
+
+  Future<int?> _selectLateMinutes(BuildContext context) async {
+    final strings = AppStrings.of(context);
+    Duration selected = Duration(minutes: attendance.lateMinutes);
+
+    return showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surfaceColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      strings.latenessTitle,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 160,
+                      child: CupertinoTimerPicker(
+                        mode: CupertinoTimerPickerMode.hm,
+                        initialTimerDuration: selected,
+                        onTimerDurationChanged: (duration) {
+                          setState(() => selected = duration);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                Navigator.pop(sheetContext, 0),
+                            child: Text(strings.onTime),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pop(
+                              sheetContext,
+                              selected.inMinutes,
+                            ),
+                            child: Text(strings.apply),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 }

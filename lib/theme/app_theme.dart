@@ -24,6 +24,16 @@ class AppTheme {
   static const Color textSecondary = Color(0xFFB0B0B0);
   static const Color textOnPrimary = Color(0xFF8B5A5A);
 
+  // Light Theme Palette
+  static const Color lightPrimary = Color(0xFFC62828);
+  static const Color lightOnPrimary = Color(0xFFFFFFFF);
+  static const Color lightBackground = Color(0xFFF8F8F8);
+  static const Color lightSurface = Color(0xFFFFFFFF);
+  static const Color lightSurfaceVariant = Color(0xFFF2F2F2);
+  static const Color lightOnSurface = Color(0xFF1A1A1A);
+  static const Color lightOnSurfaceVariant = Color(0xFF525252);
+  static const Color lightOutline = Color(0xFFBDBDBD);
+
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
@@ -139,6 +149,101 @@ class AppTheme {
       listTileTheme: const ListTileThemeData(
         textColor: textPrimary,
         iconColor: textPrimary,
+      ),
+    );
+  }
+
+  static ThemeData get lightTheme {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      colorScheme: const ColorScheme.light(
+        primary: lightPrimary,
+        onPrimary: lightOnPrimary,
+        secondary: lightPrimary,
+        surface: lightSurface,
+        error: errorColor,
+        onSurface: lightOnSurface,
+        onSurfaceVariant: lightOnSurfaceVariant,
+        onError: lightOnPrimary,
+      ),
+      scaffoldBackgroundColor: lightBackground,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: lightBackground,
+        foregroundColor: lightOnSurface,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: TextStyle(
+          color: lightOnSurface,
+          fontSize: 24,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: lightSurface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: lightPrimary,
+          foregroundColor: lightOnPrimary,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: lightPrimary,
+          side: const BorderSide(color: lightOutline),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: lightOnSurfaceVariant),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: lightPrimary,
+        foregroundColor: lightOnPrimary,
+        elevation: 4,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: lightSurfaceVariant,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: lightPrimary, width: 2),
+        ),
+        labelStyle: const TextStyle(color: lightOnSurfaceVariant),
+        hintStyle: const TextStyle(color: lightOnSurfaceVariant),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: lightSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: Color(0xFFE0E0E0),
+        thickness: 1,
+      ),
+      iconTheme: const IconThemeData(color: lightOnSurface),
+      listTileTheme: const ListTileThemeData(
+        textColor: lightOnSurface,
+        iconColor: lightOnSurface,
       ),
     );
   }

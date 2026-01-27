@@ -20,7 +20,12 @@ class DatabaseService {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'uebungsleiter_helper.db');
 
-    return await openDatabase(path, version: 1, onCreate: _onCreate);
+    return await openDatabase(
+      path,
+      version: 2,
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+    );
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -57,6 +62,7 @@ class DatabaseService {
         date TEXT NOT NULL,
         status INTEGER NOT NULL DEFAULT 0,
         answeredAt TEXT,
+        lateMinutes INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (trainingId) REFERENCES trainings (id) ON DELETE CASCADE,
         FOREIGN KEY (eventId) REFERENCES events (id) ON DELETE CASCADE
       )
@@ -71,11 +77,28 @@ class DatabaseService {
     ''');
   }
 
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute(
+        'ALTER TABLE attendance ADD COLUMN lateMinutes INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+  }
+
   // ==================== TRAININGS ====================
 
   Future<int> insertTraining(Training training) async {
     final db = await database;
     return await db.insert('trainings', training.toMap());
+  }
+
+  Future<int> insertTrainingWithId(Training training) async {
+    final db = await database;
+    return await db.insert(
+      'trainings',
+      training.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<List<Training>> getAllTrainings() async {
@@ -119,6 +142,15 @@ class DatabaseService {
     return await db.insert('events', event.toMap());
   }
 
+  Future<int> insertEventWithId(Event event) async {
+    final db = await database;
+    return await db.insert(
+      'events',
+      event.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Future<List<Event>> getAllEvents() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('events');
@@ -159,6 +191,15 @@ class DatabaseService {
     return await db.insert('attendance', attendance.toMap());
   }
 
+  Future<int> insertAttendanceWithId(Attendance attendance) async {
+    final db = await database;
+    return await db.insert(
+      'attendance',
+      attendance.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Future<List<Attendance>> getAllAttendance() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -166,6 +207,18 @@ class DatabaseService {
       orderBy: 'date DESC',
     );
     return maps.map((map) => Attendance.fromMap(map)).toList();
+  }
+
+  Future<Attendance?> getAttendanceById(int id) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'attendance',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return Attendance.fromMap(maps.first);
   }
 
   Future<List<Attendance>> getAttendanceForTraining(int trainingId) async {
