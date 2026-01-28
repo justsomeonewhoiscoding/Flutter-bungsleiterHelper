@@ -16,6 +16,8 @@ class AppTheme {
   // Status-Farben
   static const Color successColor = Color(0xFF4CAF50); // Grün für "Ja"
   static const Color successLight = Color(0xFFE8F5E9);
+  static const Color warningColor = Color(0xFFFF9800); // Orange für Status
+  static const Color warningLight = Color(0xFFFFF3E0);
   static const Color errorColor = Color(0xFFD32F2F); // Rot für "Nein"
   static const Color errorLight = Color(0xFFFFEBEE);
 
@@ -248,3 +250,4 @@ class AppTheme {
     );
   }
 }
+

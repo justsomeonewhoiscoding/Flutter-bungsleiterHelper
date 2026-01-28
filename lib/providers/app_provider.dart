@@ -73,15 +73,59 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteTraining(int id) async {
-    final attendanceEntries = await _db.getAttendanceForTraining(id);
-    for (final attendance in attendanceEntries) {
-      if (attendance.id != null) {
-        await NotificationService().cancelAttendanceNotification(
-          attendance.id!,
-        );
-      }
+  Future<void> updateTrainingEffective({
+    required Training training,
+    required DateTime effectiveDate,
+  }) async {
+    final index = _trainings.indexWhere((t) => t.id == training.id);
+    final previous = index != -1 ? _trainings[index] : await _db.getTrainingById(training.id!);
+    if (previous == null) return;
+
+    final effective = DateTime(
+      effectiveDate.year,
+      effectiveDate.month,
+      effectiveDate.day,
+    );
+
+    await _db.updateTraining(training);
+    if (index != -1) {
+      _trainings[index] = training;
     }
+
+    await _db.updateAttendanceSnapshotsForTraining(
+      trainingId: training.id!,
+      toDate: effective,
+      name: previous.name,
+      startTime: previous.startTime,
+      endTime: previous.endTime,
+    );
+    await _db.updateAttendanceSnapshotsForTraining(
+      trainingId: training.id!,
+      fromDate: effective,
+      name: training.name,
+      startTime: training.startTime,
+      endTime: training.endTime,
+    );
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final regenStart = effective.isAfter(today)
+        ? effective
+        : today.add(const Duration(days: 1));
+    await _removeFutureAttendanceAndNotifications(training.id!, regenStart);
+    await _generateAttendanceEntriesFromDate(training, regenStart);
+
+    await loadRecentAttendance();
+    notifyListeners();
+  }
+
+  Future<void> deleteTraining(int id) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    await _removeFutureAttendanceAndNotifications(
+      id,
+      today.add(const Duration(days: 1)),
+    );
     await _db.deleteTraining(id);
     _trainings.removeWhere((t) => t.id == id);
     await loadRecentAttendance();
@@ -90,14 +134,24 @@ class AppProvider extends ChangeNotifier {
 
   Future<DeletedTrainingData> deleteTrainingWithUndo(Training training) async {
     final attendanceEntries = await _db.getAttendanceForTraining(training.id!);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final futureEntries =
+        attendanceEntries.where((a) => a.date.isAfter(today)).toList();
     await deleteTraining(training.id!);
-    return DeletedTrainingData(training, attendanceEntries);
+    return DeletedTrainingData(training, futureEntries);
   }
 
   Future<void> restoreTraining(DeletedTrainingData data) async {
-    await _db.insertTrainingWithId(data.training);
+    await _db.insertTrainingWithId(
+      data.training.copyWith(isActive: true),
+    );
     for (final attendance in data.attendanceEntries) {
       await _db.insertAttendanceWithId(attendance);
+      final training = data.training;
+      if (attendance.id != null && attendance.date.isAfter(DateTime.now())) {
+        await _scheduleTrainingEndNotification(attendance, training);
+      }
     }
     await loadTrainings();
     await loadRecentAttendance();
@@ -122,6 +176,9 @@ class AppProvider extends ChangeNotifier {
       eventId: id,
       date: event.date,
       status: AttendanceStatus.pending,
+      nameSnapshot: event.name,
+      startTimeSnapshot: event.startTime,
+      endTimeSnapshot: event.endTime,
     );
     final attendanceId = await _db.insertAttendance(attendance);
     await _scheduleEventEndNotification(
@@ -197,6 +254,19 @@ class AppProvider extends ChangeNotifier {
     return entries.first;
   }
 
+  Attendance? getLatestOccurrenceForTrainingUpToToday(int trainingId) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final entries = _recentAttendance
+        .where((a) => a.trainingId == trainingId)
+        .where(
+          (a) => !a.date.isAfter(today),
+        )
+        .toList();
+    if (entries.isEmpty) return null;
+    return entries.first;
+  }
+
   Attendance? getLatestOccurrenceForEvent(int eventId) {
     final entries =
         _recentAttendance.where((a) => a.eventId == eventId).toList();
@@ -213,10 +283,21 @@ class AppProvider extends ChangeNotifier {
       date: date,
     );
     if (existing != null) return existing;
+    Training? training;
+    for (final t in _trainings) {
+      if (t.id == trainingId) {
+        training = t;
+        break;
+      }
+    }
+    training ??= await _db.getTrainingById(trainingId);
     final attendance = Attendance(
       trainingId: trainingId,
       date: date,
       status: AttendanceStatus.pending,
+      nameSnapshot: training?.name,
+      startTimeSnapshot: training?.startTime,
+      endTimeSnapshot: training?.endTime,
     );
     final id = await _db.insertAttendance(attendance);
     return attendance.copyWith(id: id);
@@ -231,10 +312,21 @@ class AppProvider extends ChangeNotifier {
       date: date,
     );
     if (existing != null) return existing;
+    Event? event;
+    for (final e in _events) {
+      if (e.id == eventId) {
+        event = e;
+        break;
+      }
+    }
+    event ??= await _db.getEventById(eventId);
     final attendance = Attendance(
       eventId: eventId,
       date: date,
       status: AttendanceStatus.pending,
+      nameSnapshot: event?.name,
+      startTimeSnapshot: event?.startTime,
+      endTimeSnapshot: event?.endTime,
     );
     final id = await _db.insertAttendance(attendance);
     return attendance.copyWith(id: id);
@@ -244,15 +336,47 @@ class AppProvider extends ChangeNotifier {
     Attendance attendance,
     AttendanceStatus status, {
     int lateMinutes = 0,
+    int leftEarlyMinutes = 0,
   }) async {
     final previousStatus = attendance.status;
     if (attendance.id != null) {
       await NotificationService().cancelAttendanceNotification(attendance.id!);
     }
+    String? nameSnapshot = attendance.nameSnapshot;
+    String? startSnapshot = attendance.startTimeSnapshot;
+    String? endSnapshot = attendance.endTimeSnapshot;
+    if (nameSnapshot == null ||
+        startSnapshot == null ||
+        endSnapshot == null) {
+      if (attendance.trainingId != null) {
+        final training =
+            await _db.getTrainingById(attendance.trainingId!);
+        if (training != null) {
+          nameSnapshot = training.name;
+          startSnapshot = training.startTime;
+          endSnapshot = training.endTime;
+        }
+      } else if (attendance.eventId != null) {
+        final event = await _db.getEventById(attendance.eventId!);
+        if (event != null) {
+          nameSnapshot = event.name;
+          startSnapshot = event.startTime;
+          endSnapshot = event.endTime;
+        }
+      }
+    }
+    final resolvedLateMinutes =
+        status == AttendanceStatus.late ? lateMinutes : 0;
+    final resolvedLeftEarlyMinutes =
+        status == AttendanceStatus.leftEarly ? leftEarlyMinutes : 0;
     final updated = attendance.copyWith(
       status: status,
       answeredAt: DateTime.now(),
-      lateMinutes: status == AttendanceStatus.present ? lateMinutes : 0,
+      lateMinutes: resolvedLateMinutes,
+      leftEarlyMinutes: resolvedLeftEarlyMinutes,
+      nameSnapshot: nameSnapshot,
+      startTimeSnapshot: startSnapshot,
+      endTimeSnapshot: endSnapshot,
     );
     await _db.updateAttendance(updated);
     await _syncPlankoEntry(updated, previousStatus);
@@ -268,10 +392,39 @@ class AppProvider extends ChangeNotifier {
     final attendance = await _db.getAttendanceById(attendanceId);
     if (attendance == null) return;
     final previousStatus = attendance.status;
+    String? nameSnapshot = attendance.nameSnapshot;
+    String? startSnapshot = attendance.startTimeSnapshot;
+    String? endSnapshot = attendance.endTimeSnapshot;
+    if (nameSnapshot == null ||
+        startSnapshot == null ||
+        endSnapshot == null) {
+      if (attendance.trainingId != null) {
+        final training =
+            await _db.getTrainingById(attendance.trainingId!);
+        if (training != null) {
+          nameSnapshot = training.name;
+          startSnapshot = training.startTime;
+          endSnapshot = training.endTime;
+        }
+      } else if (attendance.eventId != null) {
+        final event = await _db.getEventById(attendance.eventId!);
+        if (event != null) {
+          nameSnapshot = event.name;
+          startSnapshot = event.startTime;
+          endSnapshot = event.endTime;
+        }
+      }
+    }
     final updated = attendance.copyWith(
       status: status,
       answeredAt: DateTime.now(),
-      lateMinutes: status == AttendanceStatus.present ? attendance.lateMinutes : 0,
+      lateMinutes: status == AttendanceStatus.late ? attendance.lateMinutes : 0,
+      leftEarlyMinutes: status == AttendanceStatus.leftEarly
+          ? attendance.leftEarlyMinutes
+          : 0,
+      nameSnapshot: nameSnapshot,
+      startTimeSnapshot: startSnapshot,
+      endTimeSnapshot: endSnapshot,
     );
     await _db.updateAttendance(updated);
     await _syncPlankoEntry(updated, previousStatus);
@@ -315,6 +468,22 @@ class AppProvider extends ChangeNotifier {
     return null;
   }
 
+  Future<void> _removeFutureAttendanceAndNotifications(
+    int trainingId,
+    DateTime fromDate,
+  ) async {
+    final entries = await _db.getAttendanceForTraining(trainingId);
+    for (final attendance in entries) {
+      if (attendance.date.isBefore(fromDate)) continue;
+      if (attendance.id != null) {
+        await NotificationService().cancelAttendanceNotification(
+          attendance.id!,
+        );
+      }
+    }
+    await _db.deleteAttendanceForTrainingFromDate(trainingId, fromDate);
+  }
+
   // Generiert Anwesenheitseinträge für ein Training (nächste 8 Wochen)
   Future<void> _generateAttendanceEntries(Training training) async {
     final now = DateTime.now();
@@ -341,8 +510,51 @@ class AppProvider extends ChangeNotifier {
               trainingId: training.id,
               date: date,
               status: AttendanceStatus.pending,
+              nameSnapshot: training.name,
+              startTimeSnapshot: training.startTime,
+              endTimeSnapshot: training.endTime,
             );
             final id = await _db.insertAttendance(attendance);
+            await _scheduleTrainingEndNotification(
+              attendance.copyWith(id: id),
+              training,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _generateAttendanceEntriesFromDate(
+    Training training,
+    DateTime startDate,
+  ) async {
+    final base = DateTime(startDate.year, startDate.month, startDate.day);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    for (int week = 0; week < 8; week++) {
+      for (final weekday in training.weekdays) {
+        final daysUntil = (weekday - base.weekday + 7) % 7 + (week * 7);
+        final date = base.add(Duration(days: daysUntil));
+        if (date.isBefore(base)) continue;
+
+        final existing = await _db.getAttendanceByDate(
+          trainingId: training.id,
+          date: date,
+        );
+
+        if (existing == null) {
+          final attendance = Attendance(
+            trainingId: training.id,
+            date: date,
+            status: AttendanceStatus.pending,
+            nameSnapshot: training.name,
+            startTimeSnapshot: training.startTime,
+            endTimeSnapshot: training.endTime,
+          );
+          final id = await _db.insertAttendance(attendance);
+          if (!date.isBefore(today)) {
             await _scheduleTrainingEndNotification(
               attendance.copyWith(id: id),
               training,
@@ -379,6 +591,9 @@ class AppProvider extends ChangeNotifier {
               trainingId: training.id,
               date: cursor,
               status: AttendanceStatus.pending,
+              nameSnapshot: training.name,
+              startTimeSnapshot: training.startTime,
+              endTimeSnapshot: training.endTime,
             ),
           );
         }
@@ -423,6 +638,11 @@ class AppProvider extends ChangeNotifier {
       await updateAttendanceStatusById(
         attendanceId,
         wasPresent ? AttendanceStatus.present : AttendanceStatus.absent,
+      );
+      final strings = AppStrings.forLanguage(_settings.language);
+      await NotificationService().showSavedNotification(
+        title: strings.answerSavedTitle,
+        body: strings.answerSavedBody,
       );
     };
   }
@@ -489,7 +709,21 @@ class AppProvider extends ChangeNotifier {
     if (updated.id == null) return;
     final plankoService = PlankoService();
 
-    if (updated.status == AttendanceStatus.present) {
+    if (updated.isPresentLike) {
+      if (updated.nameSnapshot != null &&
+          updated.startTimeSnapshot != null &&
+          updated.endTimeSnapshot != null) {
+        await plankoService.writeAttendanceEntry(
+          attendanceId: updated.id!,
+          name: updated.nameSnapshot!,
+          date: updated.date,
+          startTime: updated.startTimeSnapshot!,
+          endTime: updated.endTimeSnapshot!,
+          timeNote: updated.timeNote(),
+          customTemplatePath: _settings.customTemplatePath,
+        );
+        return;
+      }
       Training? training;
       Event? event;
       if (updated.trainingId != null) {
@@ -516,6 +750,7 @@ class AppProvider extends ChangeNotifier {
           date: updated.date,
           startTime: training.startTime,
           endTime: training.endTime,
+          timeNote: updated.timeNote(),
           customTemplatePath: _settings.customTemplatePath,
         );
       } else if (event != null) {
@@ -525,10 +760,13 @@ class AppProvider extends ChangeNotifier {
           date: updated.date,
           startTime: event.startTime,
           endTime: event.endTime,
+          timeNote: updated.timeNote(),
           customTemplatePath: _settings.customTemplatePath,
         );
       }
-    } else if (previousStatus == AttendanceStatus.present) {
+    } else if (previousStatus == AttendanceStatus.present ||
+        previousStatus == AttendanceStatus.late ||
+        previousStatus == AttendanceStatus.leftEarly) {
       await plankoService.removeAttendanceEntry(
         attendanceId: updated.id!,
         customTemplatePath: _settings.customTemplatePath,

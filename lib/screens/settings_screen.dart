@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart';
@@ -36,11 +38,12 @@ class SettingsScreen extends StatelessWidget {
       ),
       body: Consumer<AppProvider>(
         builder: (context, provider, _) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 // Dokument Section
                 _SectionCard(
                   title: strings.documentSection,
@@ -87,6 +90,45 @@ class SettingsScreen extends StatelessWidget {
                     _SettingsButton(
                       label: strings.manageArchive,
                       onTap: () => _manageArchive(context),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Akku-Optimierung Section
+                _SectionCard(
+                  title: strings.batteryOptimizationTitle,
+                  children: [
+                    FutureBuilder<bool?>(
+                      future: _getBatteryOptimizationStatus(),
+                      builder: (context, snapshot) {
+                        String label;
+                        if (!Platform.isAndroid) {
+                          label = strings.batteryOptimizationUnknown;
+                        } else if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          label = strings.batteryOptimizationUnknown;
+                        } else if (snapshot.data == true) {
+                          label = strings.batteryOptimizationDisabled;
+                        } else if (snapshot.data == false) {
+                          label = strings.batteryOptimizationEnabled;
+                        } else {
+                          label = strings.batteryOptimizationUnknown;
+                        }
+                        return Text(
+                          label,
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 14,
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _SettingsButton(
+                      label: strings.batteryOptimizationOpen,
+                      onTap: () =>
+                          Navigator.of(context).pushNamed('/battery_optimization'),
                     ),
                   ],
                 ),
@@ -166,7 +208,8 @@ class SettingsScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
           );
         },
@@ -175,7 +218,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Future<void> _selectTemplate(BuildContext context) async {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['docx'],
@@ -210,7 +253,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _openPlanko(BuildContext context) async {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     final plankoService = PlankoService();
     final provider = context.read<AppProvider>();
 
@@ -233,7 +276,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _sharePlanko(BuildContext context) async {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     final plankoService = PlankoService();
     final provider = context.read<AppProvider>();
 
@@ -246,7 +289,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _shareArchive(BuildContext context) async {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     final plankoService = PlankoService();
 
     ScaffoldMessenger.of(
@@ -263,7 +306,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _changeLanguage(BuildContext context) {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     final provider = context.read<AppProvider>();
     final currentLang = provider.settings.language;
 
@@ -303,7 +346,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _confirmReset(BuildContext context) {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -330,6 +373,18 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<bool?> _getBatteryOptimizationStatus() async {
+    if (!Platform.isAndroid) return null;
+    const channel = MethodChannel('uebungsleiter_helper/battery_optimization');
+    try {
+      final result =
+          await channel.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      return result;
+    } catch (_) {
+      return null;
+    }
   }
 }
 

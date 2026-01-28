@@ -26,7 +26,7 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     final weekdayLabels = strings.weekdayShort;
     return Scaffold(
       appBar: AppBar(
@@ -39,11 +39,12 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
           IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             // Name Input
             Container(
               decoration: BoxDecoration(
@@ -163,7 +164,8 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
                 ],
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: SafeArea(
@@ -208,7 +210,7 @@ class _AddTrainingScreenState extends State<AddTrainingScreen> {
   }
 
   void _save() {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     if (_nameController.text.isEmpty ||
         _startTime == null ||
         _endTime == null) {

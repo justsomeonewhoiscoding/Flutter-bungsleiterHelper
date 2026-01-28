@@ -22,7 +22,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -37,7 +37,8 @@ class DatabaseService {
         weekdays TEXT NOT NULL,
         startTime TEXT NOT NULL,
         endTime TEXT NOT NULL,
-        createdAt TEXT NOT NULL
+        createdAt TEXT NOT NULL,
+        isActive INTEGER NOT NULL DEFAULT 1
       )
     ''');
 
@@ -63,6 +64,10 @@ class DatabaseService {
         status INTEGER NOT NULL DEFAULT 0,
         answeredAt TEXT,
         lateMinutes INTEGER NOT NULL DEFAULT 0,
+        leftEarlyMinutes INTEGER NOT NULL DEFAULT 0,
+        nameSnapshot TEXT,
+        startTimeSnapshot TEXT,
+        endTimeSnapshot TEXT,
         FOREIGN KEY (trainingId) REFERENCES trainings (id) ON DELETE CASCADE,
         FOREIGN KEY (eventId) REFERENCES events (id) ON DELETE CASCADE
       )
@@ -82,6 +87,21 @@ class DatabaseService {
       await db.execute(
         'ALTER TABLE attendance ADD COLUMN lateMinutes INTEGER NOT NULL DEFAULT 0',
       );
+    }
+    if (oldVersion < 3) {
+      await db.execute(
+        'ALTER TABLE attendance ADD COLUMN leftEarlyMinutes INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (oldVersion < 4) {
+      await db.execute(
+        'ALTER TABLE trainings ADD COLUMN isActive INTEGER NOT NULL DEFAULT 1',
+      );
+    }
+    if (oldVersion < 5) {
+      await db.execute('ALTER TABLE attendance ADD COLUMN nameSnapshot TEXT');
+      await db.execute('ALTER TABLE attendance ADD COLUMN startTimeSnapshot TEXT');
+      await db.execute('ALTER TABLE attendance ADD COLUMN endTimeSnapshot TEXT');
     }
   }
 
@@ -103,7 +123,11 @@ class DatabaseService {
 
   Future<List<Training>> getAllTrainings() async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('trainings');
+    final List<Map<String, dynamic>> maps = await db.query(
+      'trainings',
+      where: 'isActive = ?',
+      whereArgs: [1],
+    );
     return maps.map((map) => Training.fromMap(map)).toList();
   }
 
@@ -130,9 +154,23 @@ class DatabaseService {
 
   Future<int> deleteTraining(int id) async {
     final db = await database;
-    // Lösche auch zugehörige Anwesenheitseinträge
-    await db.delete('attendance', where: 'trainingId = ?', whereArgs: [id]);
-    return await db.delete('trainings', where: 'id = ?', whereArgs: [id]);
+    await db.update(
+      'trainings',
+      {'isActive': 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    return id;
+  }
+
+  Future<void> activateTraining(int id) async {
+    final db = await database;
+    await db.update(
+      'trainings',
+      {'isActive': 1},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // ==================== EVENTS ====================
@@ -298,6 +336,77 @@ class DatabaseService {
     return await db.delete('attendance', where: 'id = ?', whereArgs: [id]);
   }
 
+  Future<void> deleteAttendanceForTrainingFromDate(
+    int trainingId,
+    DateTime fromDate,
+  ) async {
+    final db = await database;
+    final dateStr =
+        DateTime(fromDate.year, fromDate.month, fromDate.day).toIso8601String();
+    await db.delete(
+      'attendance',
+      where: 'trainingId = ? AND date >= ?',
+      whereArgs: [trainingId, dateStr],
+    );
+  }
+
+  Future<void> updateAttendanceSnapshotsForTraining({
+    required int trainingId,
+    DateTime? fromDate,
+    DateTime? toDate,
+    required String name,
+    required String startTime,
+    required String endTime,
+  }) async {
+    final db = await database;
+    final values = {
+      'nameSnapshot': name,
+      'startTimeSnapshot': startTime,
+      'endTimeSnapshot': endTime,
+    };
+    if (fromDate != null && toDate != null) {
+      final fromStr =
+          DateTime(fromDate.year, fromDate.month, fromDate.day).toIso8601String();
+      final toStr =
+          DateTime(toDate.year, toDate.month, toDate.day).toIso8601String();
+      await db.update(
+        'attendance',
+        values,
+        where: 'trainingId = ? AND date >= ? AND date < ?',
+        whereArgs: [trainingId, fromStr, toStr],
+      );
+      return;
+    }
+    if (fromDate != null) {
+      final fromStr =
+          DateTime(fromDate.year, fromDate.month, fromDate.day).toIso8601String();
+      await db.update(
+        'attendance',
+        values,
+        where: 'trainingId = ? AND date >= ?',
+        whereArgs: [trainingId, fromStr],
+      );
+      return;
+    }
+    if (toDate != null) {
+      final toStr =
+          DateTime(toDate.year, toDate.month, toDate.day).toIso8601String();
+      await db.update(
+        'attendance',
+        values,
+        where: 'trainingId = ? AND date < ?',
+        whereArgs: [trainingId, toStr],
+      );
+      return;
+    }
+    await db.update(
+      'attendance',
+      values,
+      where: 'trainingId = ?',
+      whereArgs: [trainingId],
+    );
+  }
+
   // ==================== SETTINGS ====================
 
   Future<void> setSetting(String key, String value) async {
@@ -361,3 +470,4 @@ class DatabaseService {
     // Settings bleiben erhalten
   }
 }
+

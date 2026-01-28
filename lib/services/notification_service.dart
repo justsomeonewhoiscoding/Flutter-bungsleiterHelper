@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import '../models/models.dart';
+import '../utils/app_strings.dart';
 import 'database_service.dart';
 import 'planko_service.dart';
 
@@ -117,14 +118,45 @@ class NotificationService {
     final attendance = await db.getAttendanceById(attendanceId);
     if (attendance == null) return;
     final previousStatus = attendance.status;
+    String? nameSnapshot = attendance.nameSnapshot;
+    String? startSnapshot = attendance.startTimeSnapshot;
+    String? endSnapshot = attendance.endTimeSnapshot;
+    if (nameSnapshot == null ||
+        startSnapshot == null ||
+        endSnapshot == null) {
+      if (attendance.trainingId != null) {
+        final training = await db.getTrainingById(attendance.trainingId!);
+        if (training != null) {
+          nameSnapshot = training.name;
+          startSnapshot = training.startTime;
+          endSnapshot = training.endTime;
+        }
+      } else if (attendance.eventId != null) {
+        final event = await db.getEventById(attendance.eventId!);
+        if (event != null) {
+          nameSnapshot = event.name;
+          startSnapshot = event.startTime;
+          endSnapshot = event.endTime;
+        }
+      }
+    }
     final updated = attendance.copyWith(
       status: wasPresent ? AttendanceStatus.present : AttendanceStatus.absent,
       answeredAt: DateTime.now(),
-      lateMinutes: wasPresent ? attendance.lateMinutes : 0,
+      lateMinutes: 0,
+      leftEarlyMinutes: 0,
+      nameSnapshot: nameSnapshot,
+      startTimeSnapshot: startSnapshot,
+      endTimeSnapshot: endSnapshot,
     );
     await db.updateAttendance(updated);
     await _updatePlankoForAttendance(updated, previousStatus, db);
-    await NotificationService().showSavedNotification();
+    final settings = await db.getAppSettings();
+    final strings = AppStrings.forLanguage(settings.language);
+    await NotificationService().showSavedNotification(
+      title: strings.answerSavedTitle,
+      body: strings.answerSavedBody,
+    );
   }
 
   static Future<void> _updatePlankoForAttendance(
@@ -134,7 +166,23 @@ class NotificationService {
   ) async {
     if (updated.id == null) return;
     final plankoService = PlankoService();
-    if (updated.status == AttendanceStatus.present) {
+    final settings = await db.getAppSettings();
+    final customTemplatePath = settings.customTemplatePath;
+    if (updated.isPresentLike) {
+      if (updated.nameSnapshot != null &&
+          updated.startTimeSnapshot != null &&
+          updated.endTimeSnapshot != null) {
+        await plankoService.writeAttendanceEntry(
+          attendanceId: updated.id!,
+          name: updated.nameSnapshot!,
+          date: updated.date,
+          startTime: updated.startTimeSnapshot!,
+          endTime: updated.endTimeSnapshot!,
+          timeNote: updated.timeNote(),
+          customTemplatePath: customTemplatePath,
+        );
+        return;
+      }
       if (updated.trainingId != null) {
         final training = await db.getTrainingById(updated.trainingId!);
         if (training == null) return;
@@ -144,6 +192,8 @@ class NotificationService {
           date: updated.date,
           startTime: training.startTime,
           endTime: training.endTime,
+          timeNote: updated.timeNote(),
+          customTemplatePath: customTemplatePath,
         );
       } else if (updated.eventId != null) {
         final event = await db.getEventById(updated.eventId!);
@@ -154,11 +204,16 @@ class NotificationService {
           date: updated.date,
           startTime: event.startTime,
           endTime: event.endTime,
+          timeNote: updated.timeNote(),
+          customTemplatePath: customTemplatePath,
         );
       }
-    } else if (previousStatus == AttendanceStatus.present) {
+    } else if (previousStatus == AttendanceStatus.present ||
+        previousStatus == AttendanceStatus.late ||
+        previousStatus == AttendanceStatus.leftEarly) {
       await plankoService.removeAttendanceEntry(
         attendanceId: updated.id!,
+        customTemplatePath: customTemplatePath,
       );
     }
   }
@@ -509,7 +564,7 @@ class NotificationService {
     await _notifications.cancel(attendanceId);
   }
 
-  Future<void> showSavedNotification() async {
+  Future<void> showSavedNotification({String? title, String? body}) async {
     const notificationDetails = NotificationDetails(
       android: AndroidNotificationDetails(
         'training_saved',
@@ -526,8 +581,8 @@ class NotificationService {
     );
     await _notifications.show(
       1,
-      'Gespeichert',
-      'Antwort wurde gespeichert',
+      title ?? 'Gespeichert',
+      body ?? 'Antwort wurde gespeichert',
       notificationDetails,
     );
   }

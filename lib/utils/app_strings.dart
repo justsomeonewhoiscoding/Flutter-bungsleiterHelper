@@ -11,6 +11,11 @@ class AppStrings {
     return AppStrings._(_resolveLanguage(lang));
   }
 
+  static AppStrings read(BuildContext context) {
+    final lang = Provider.of<AppProvider>(context, listen: false).settings.language;
+    return AppStrings._(_resolveLanguage(lang));
+  }
+
   static AppStrings forLanguage(String language) =>
       AppStrings._(_resolveLanguage(language));
 
@@ -49,13 +54,19 @@ class AppStrings {
       _t('deleteTrainingTitle').replaceAll('{name}', name);
   String deleteTrainingBody(String name) =>
       _t('deleteTrainingBody').replaceAll('{name}', name);
+  String deleteEventTitle(String name) =>
+      _t('deleteEventTitle').replaceAll('{name}', name);
+  String deleteEventBody(String name) =>
+      _t('deleteEventBody').replaceAll('{name}', name);
 
   // Add Training
   String get addTrainingTitle => _t('addTrainingTitle');
+  String get editTrainingTitle => _t('editTrainingTitle');
   String get trainingNameHint => _t('trainingNameHint');
   String get weekdaysLabel => _t('weekdaysLabel');
   String get startTimeLabel => _t('startTimeLabel');
   String get endTimeLabel => _t('endTimeLabel');
+  String get effectiveFromLabel => _t('effectiveFromLabel');
   List<String> get weekdayShort =>
       _weekdayShort[language] ?? _weekdayShort['de']!;
   String formatWeekdays(List<int> weekdays) =>
@@ -109,6 +120,8 @@ class AppStrings {
   String get notificationSent => _t('notificationSent');
   String get notificationPermissionDenied =>
       _t('notificationPermissionDenied');
+  String get answerSavedTitle => _t('answerSavedTitle');
+  String get answerSavedBody => _t('answerSavedBody');
   String get deleteArchive => _t('deleteArchive');
   String get archiveDeleted => _t('archiveDeleted');
   String get close => _t('close');
@@ -123,6 +136,19 @@ class AppStrings {
   String get validationEndAfterStart => _t('validationEndAfterStart');
   String get eventBadge => _t('eventBadge');
   String get statusOpen => _t('statusOpen');
+  String get statusOnTime => _t('statusOnTime');
+  String get statusLate => _t('statusLate');
+  String get statusLeftEarly => _t('statusLeftEarly');
+  String get statusAbsent => _t('statusAbsent');
+  String get statusTitle => _t('statusTitle');
+  String get lateMinutesLabel => _t('lateMinutesLabel');
+  String get leftEarlyMinutesLabel => _t('leftEarlyMinutesLabel');
+  String get minutesLabel => _t('minutesLabel');
+  String get batteryOptimizationTitle => _t('batteryOptimizationTitle');
+  String get batteryOptimizationEnabled => _t('batteryOptimizationEnabled');
+  String get batteryOptimizationDisabled => _t('batteryOptimizationDisabled');
+  String get batteryOptimizationUnknown => _t('batteryOptimizationUnknown');
+  String get batteryOptimizationOpen => _t('batteryOptimizationOpen');
   String get templateInvalid => _t('templateInvalid');
   String get currentPlankoMissing => _t('currentPlankoMissing');
 
@@ -151,11 +177,16 @@ class AppStrings {
       'deleteTrainingTitle': 'Training löschen?',
       'deleteTrainingBody':
           'Möchtest du "{name}" wirklich löschen? Alle Anwesenheitseinträge werden ebenfalls gelöscht.',
+      'deleteEventTitle': 'Event löschen?',
+      'deleteEventBody':
+          'Möchtest du "{name}" wirklich löschen? Alle Anwesenheitseinträge werden ebenfalls gelöscht.',
       'addTrainingTitle': 'Training hinzufügen',
+      'editTrainingTitle': 'Training bearbeiten',
       'trainingNameHint': 'Name (z.B. Kinderturnen)',
       'weekdaysLabel': 'Wochentage',
       'startTimeLabel': 'Startzeit',
       'endTimeLabel': 'Endzeit',
+      'effectiveFromLabel': 'Gültig ab',
       'addEventTitle': 'Einmaliges Event',
       'addEventInfo':
           'Erstelle ein einmaliges Event, das nur an einem bestimmten Datum stattfindet (z.B. Weihnachtsfeier, Sondertraining).',
@@ -197,6 +228,8 @@ class AppStrings {
       'notificationSent': 'Benachrichtigung gesendet',
       'notificationPermissionDenied':
           'Benachrichtigungsberechtigung wurde nicht erteilt',
+      'answerSavedTitle': 'Gespeichert',
+      'answerSavedBody': 'Antwort wurde gespeichert',
       'deleteArchive': 'Archiv löschen',
       'archiveDeleted': 'Archiv gelöscht',
       'close': 'Schließen',
@@ -210,6 +243,19 @@ class AppStrings {
       'validationEndAfterStart': 'Endzeit muss nach der Startzeit liegen.',
       'eventBadge': 'Einmalig',
       'statusOpen': 'Offen',
+      'statusOnTime': 'Pünktlich',
+      'statusLate': 'Zu spät',
+      'statusLeftEarly': 'Früher gegangen',
+      'statusAbsent': 'Nicht anwesend',
+      'statusTitle': 'Status',
+      'lateMinutesLabel': 'Verspätung',
+      'leftEarlyMinutesLabel': 'Früher gegangen',
+      'minutesLabel': 'Minuten',
+      'batteryOptimizationTitle': 'Akku-Optimierung',
+      'batteryOptimizationEnabled': 'Aktiv (optimiert)',
+      'batteryOptimizationDisabled': 'Nicht optimiert',
+      'batteryOptimizationUnknown': 'Status unbekannt',
+      'batteryOptimizationOpen': 'Akku-Optimierung öffnen',
       'templateInvalid': 'Template ist ungültig.',
       'currentPlankoMissing': 'Planko fehlt oder konnte nicht erstellt werden.',
       'trainingEndedNotificationBody':
@@ -235,11 +281,16 @@ class AppStrings {
       'deleteTrainingTitle': 'Delete training?',
       'deleteTrainingBody':
           'Do you really want to delete "{name}"? All attendance entries will also be deleted.',
+      'deleteEventTitle': 'Delete event?',
+      'deleteEventBody':
+          'Do you really want to delete "{name}"? All attendance entries will also be deleted.',
       'addTrainingTitle': 'Add training',
+      'editTrainingTitle': 'Edit training',
       'trainingNameHint': 'Name (e.g. Kids gymnastics)',
       'weekdaysLabel': 'Weekdays',
       'startTimeLabel': 'Start time',
       'endTimeLabel': 'End time',
+      'effectiveFromLabel': 'Effective from',
       'addEventTitle': 'One-time event',
       'addEventInfo':
           'Create a one-time event that only takes place on a specific date (e.g. holiday party, special session).',
@@ -281,6 +332,8 @@ class AppStrings {
       'notificationSent': 'Notification sent',
       'notificationPermissionDenied':
           'Notification permission was not granted',
+      'answerSavedTitle': 'Saved',
+      'answerSavedBody': 'Answer was saved',
       'deleteArchive': 'Delete archive',
       'archiveDeleted': 'Archive deleted',
       'close': 'Close',
@@ -294,6 +347,19 @@ class AppStrings {
       'validationEndAfterStart': 'End time must be after start time.',
       'eventBadge': 'One-time',
       'statusOpen': 'Open',
+      'statusOnTime': 'On time',
+      'statusLate': 'Late',
+      'statusLeftEarly': 'Left early',
+      'statusAbsent': 'Not present',
+      'statusTitle': 'Status',
+      'lateMinutesLabel': 'Lateness',
+      'leftEarlyMinutesLabel': 'Left early',
+      'minutesLabel': 'Minutes',
+      'batteryOptimizationTitle': 'Battery optimization',
+      'batteryOptimizationEnabled': 'Enabled (optimized)',
+      'batteryOptimizationDisabled': 'Not optimized',
+      'batteryOptimizationUnknown': 'Status unknown',
+      'batteryOptimizationOpen': 'Open battery optimization',
       'templateInvalid': 'Template is invalid.',
       'currentPlankoMissing': 'Plan is missing or could not be created.',
       'trainingEndedNotificationBody':

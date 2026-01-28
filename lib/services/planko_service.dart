@@ -47,7 +47,11 @@ class PlankoService {
       if (await currentFile.exists()) return currentFile;
 
       final templateBytes = await _loadTemplateBytes(customTemplatePath);
-      await _renderCurrentPlanko([], templateBytes, currentFile);
+      try {
+        await _renderCurrentPlanko([], templateBytes, currentFile);
+      } catch (_) {
+        await currentFile.writeAsBytes(templateBytes, flush: true);
+      }
       return currentFile;
     } catch (_) {
       return null;
@@ -78,14 +82,17 @@ class PlankoService {
     required DateTime date,
     required String startTime,
     required String endTime,
+    String? timeNote,
     String? customTemplatePath,
   }) async {
     final docDir = await getApplicationDocumentsDirectory();
     final currentFile = File('${docDir.path}/$_currentPlankoFileName');
+    await ensureCurrentPlankoExists(customTemplatePath: customTemplatePath);
     final templateBytes = await _loadTemplateBytes(customTemplatePath);
 
     final entries = await _loadEntries(docDir);
-    if (entries.any((e) => e.attendanceId == attendanceId)) return;
+    final existingIndex =
+        entries.indexWhere((e) => e.attendanceId == attendanceId);
 
     final capacity = _getTemplateCapacity(templateBytes);
     if (capacity > 0 && entries.length >= capacity) {
@@ -94,15 +101,20 @@ class PlankoService {
     }
 
     final dateStr = _formatDate(date);
-    final timeStr = '$startTime - $endTime';
-    entries.add(
-      PlankoEntry(
-        attendanceId: attendanceId,
-        name: name,
-        date: dateStr,
-        time: timeStr,
-      ),
+    final timeStr = timeNote == null || timeNote.isEmpty
+        ? '$startTime - $endTime'
+        : '$startTime - $endTime ($timeNote)';
+    final entry = PlankoEntry(
+      attendanceId: attendanceId,
+      name: name,
+      date: dateStr,
+      time: timeStr,
     );
+    if (existingIndex >= 0) {
+      entries[existingIndex] = entry;
+    } else {
+      entries.add(entry);
+    }
 
     await _saveEntries(docDir, entries);
     await _renderCurrentPlanko(entries, templateBytes, currentFile);
@@ -313,17 +325,20 @@ class PlankoService {
     final updatedXml = document.toXmlString();
     final updatedBytes = utf8.encode(updatedXml);
 
-    final docIndex =
-        archive.files.indexWhere((file) => file.name == 'word/document.xml');
-    if (docIndex != -1) {
-      archive.files[docIndex] = ArchiveFile(
+    final newArchive = Archive();
+    for (final file in archive.files) {
+      if (file.name == 'word/document.xml') continue;
+      newArchive.addFile(file);
+    }
+    newArchive.addFile(
+      ArchiveFile(
         'word/document.xml',
         updatedBytes.length,
         updatedBytes,
-      );
-    }
+      ),
+    );
 
-    final zipData = ZipEncoder().encode(archive);
+    final zipData = ZipEncoder().encode(newArchive);
     if (zipData == null) return;
     await outputFile.writeAsBytes(zipData, flush: true);
   }

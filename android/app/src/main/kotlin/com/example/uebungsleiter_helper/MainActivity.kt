@@ -17,17 +17,15 @@ class MainActivity : FlutterActivity() {
 		MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "uebungsleiter_helper/battery_optimization").setMethodCallHandler { call, result ->
 			if (call.method == "openBatteryOptimization") {
 				try {
-					val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-						val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-						if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
-							Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-								data = Uri.parse("package:$packageName")
-							}
-						} else {
-							Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+					val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+						Intent("android.settings.APP_BATTERY_SETTINGS").apply {
+							data = Uri.parse("package:$packageName")
+							putExtra("android.provider.extra.APP_PACKAGE", packageName)
 						}
 					} else {
-						Intent(Settings.ACTION_SETTINGS)
+						Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+							data = Uri.parse("package:$packageName")
+						}
 					}
 					intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 					try {
@@ -42,6 +40,17 @@ class MainActivity : FlutterActivity() {
 					result.success(true)
 				} catch (e: Exception) {
 					result.error("ERROR", "Could not open battery optimization settings", null)
+				}
+			} else if (call.method == "isIgnoringBatteryOptimizations") {
+				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+					try {
+						val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+						result.success(powerManager.isIgnoringBatteryOptimizations(packageName))
+					} catch (e: Exception) {
+						result.error("ERROR", "Could not read battery optimization status", null)
+					}
+				} else {
+					result.success(null)
 				}
 			} else {
 				result.notImplemented()

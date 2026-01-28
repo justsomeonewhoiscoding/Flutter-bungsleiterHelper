@@ -37,12 +37,13 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
       appBar: AppBar(
         title: Text(strings.archiveSection),
       ),
-      body: FutureBuilder<List<File>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: SafeArea(
+        child: FutureBuilder<List<File>>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
           final files = snapshot.data!;
           if (files.isEmpty) {
@@ -54,41 +55,42 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: files.length,
-            itemBuilder: (context, index) {
-              final file = files[index];
-              final name = file.path.split('/').last;
-              final sizeKb = (file.lengthSync() / 1024).round();
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  color: AppTheme.cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  title: Text(name),
-                  subtitle: Text('$sizeKb KB'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.open_in_new),
-                        onPressed: () => OpenFilex.open(file.path),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.share),
-                        onPressed: () =>
-                            Share.shareXFiles([XFile(file.path)]),
-                      ),
-                    ],
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: files.length,
+              itemBuilder: (context, index) {
+                final file = files[index];
+                final name = file.path.split('/').last;
+                final sizeKb = (file.lengthSync() / 1024).round();
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.cardColor,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                ),
-              );
-            },
-          );
-        },
+                  child: ListTile(
+                    title: Text(name),
+                    subtitle: Text('$sizeKb KB'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.open_in_new),
+                          onPressed: () => OpenFilex.open(file.path),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.share),
+                          onPressed: () =>
+                              Share.shareXFiles([XFile(file.path)]),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(

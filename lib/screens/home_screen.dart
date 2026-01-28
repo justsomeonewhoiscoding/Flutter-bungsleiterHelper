@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import 'add_training_screen.dart';
 import 'add_event_screen.dart';
 import 'attendance_history_screen.dart';
+import 'edit_training_screen.dart';
 import 'settings_screen.dart';
 import '../widgets/attendance_dialog.dart';
 import '../utils/app_strings.dart';
@@ -38,11 +39,12 @@ class HomeScreen extends StatelessWidget {
           }
 
           final strings = AppStrings.of(context);
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 // Header
                 Text(
                   strings.yourTrainings,
@@ -96,13 +98,21 @@ class HomeScreen extends StatelessWidget {
                       key: ValueKey('training_${training.id}'),
                       direction: DismissDirection.endToStart,
                       background: const _DismissBackground(),
+                      confirmDismiss: (_) {
+                        final strings = AppStrings.read(context);
+                        return _confirmDeleteDialog(
+                          context,
+                          title: strings.deleteTrainingTitle(training.name),
+                          body: strings.deleteTrainingBody(training.name),
+                        );
+                      },
                       onDismissed: (_) async {
                         final deleted =
                             await context.read<AppProvider>().deleteTrainingWithUndo(
                                   training,
                                 );
                         if (!context.mounted) return;
-                        final strings = AppStrings.of(context);
+                        final strings = AppStrings.read(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
@@ -126,13 +136,21 @@ class HomeScreen extends StatelessWidget {
                       key: ValueKey('event_${event.id}'),
                       direction: DismissDirection.endToStart,
                       background: const _DismissBackground(),
+                      confirmDismiss: (_) {
+                        final strings = AppStrings.read(context);
+                        return _confirmDeleteDialog(
+                          context,
+                          title: strings.deleteEventTitle(event.name),
+                          body: strings.deleteEventBody(event.name),
+                        );
+                      },
                       onDismissed: (_) async {
                         final deleted =
                             await context.read<AppProvider>().deleteEventWithUndo(
                                   event,
                                 );
                         if (!context.mounted) return;
-                        final strings = AppStrings.of(context);
+                        final strings = AppStrings.read(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
@@ -150,7 +168,8 @@ class HomeScreen extends StatelessWidget {
                       child: _EventCard(event: event),
                     ),
                 ],
-              ],
+                ],
+              ),
             ),
           );
         },
@@ -205,7 +224,7 @@ class _AddButton extends StatelessWidget {
 class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
@@ -244,10 +263,22 @@ class _TrainingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.read<AppProvider>();
+    final provider = context.watch<AppProvider>();
     final strings = AppStrings.of(context);
-    final lastAttendance = provider.getLastAttendanceForTraining(training.id!);
+    final lastAttendance =
+        provider.getLatestOccurrenceForTrainingUpToToday(training.id!);
     final nextDate = provider.getNextTrainingDate(training);
+    final lastStatusText = lastAttendance == null
+        ? null
+        : lastAttendance.status == AttendanceStatus.pending
+            ? strings.statusOpen
+            : lastAttendance.status == AttendanceStatus.present
+                ? strings.statusOnTime
+                : lastAttendance.status == AttendanceStatus.late
+                    ? strings.statusLate
+                    : lastAttendance.status == AttendanceStatus.leftEarly
+                        ? strings.statusLeftEarly
+                        : strings.no;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -270,7 +301,20 @@ class _TrainingCard extends StatelessWidget {
                     width: 4,
                     height: 60,
                     decoration: BoxDecoration(
-                      color: AppTheme.accentRed,
+                      color: lastAttendance == null
+                          ? AppTheme.textSecondary.withValues(alpha: 0.4)
+                          : lastAttendance.status == AttendanceStatus.present
+                              ? AppTheme.successColor
+                              : (lastAttendance.status ==
+                                          AttendanceStatus.late ||
+                                      lastAttendance.status ==
+                                          AttendanceStatus.leftEarly)
+                                  ? AppTheme.warningColor
+                                  : lastAttendance.status ==
+                                          AttendanceStatus.absent
+                                      ? AppTheme.errorColor
+                                      : AppTheme.textSecondary
+                                          .withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -297,22 +341,23 @@ class _TrainingCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            if (lastAttendance != null) ...[
+                        if (lastAttendance != null)
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
                               _StatusBadge(status: lastAttendance.status),
-                              const SizedBox(width: 8),
                               Text(
-                                '${strings.lastLabel(lastAttendance.status == AttendanceStatus.present ? strings.yes : strings.no)} (${DateFormat('dd.MM.yyyy').format(lastAttendance.date)})',
+                                '${strings.lastLabel(lastStatusText ?? strings.statusOpen)} (${DateFormat('dd.MM.yyyy').format(lastAttendance.date)})',
                                 style: TextStyle(
                                   color: AppTheme.textSecondary,
                                   fontSize: 12,
                                 ),
                               ),
                               if (lastAttendance.status ==
-                                      AttendanceStatus.present &&
-                                  lastAttendance.lateMinutes > 0) ...[
-                                const SizedBox(width: 8),
+                                      AttendanceStatus.late &&
+                                  lastAttendance.lateMinutes > 0)
                                 Text(
                                   strings.lateLabel(
                                     lastAttendance.lateMinutes,
@@ -322,13 +367,21 @@ class _TrainingCard extends StatelessWidget {
                                     fontSize: 12,
                                   ),
                                 ),
-                              ],
+                              if (lastAttendance.status ==
+                                      AttendanceStatus.leftEarly &&
+                                  lastAttendance.leftEarlyMinutes > 0)
+                                Text(
+                                  '-${lastAttendance.leftEarlyMinutes} ${strings.minutesLabel}',
+                                  style: TextStyle(
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                ),
                             ],
-                          ],
-                        ),
+                          ),
                         if (nextDate != null)
                           Text(
-                            '${strings.nextLabel(DateFormat('dd.MM.yyyy').format(nextDate))} · ${training.endTime} ${strings.timeSuffix}',
+                            '${strings.nextLabel(DateFormat('dd.MM.yyyy').format(nextDate))} - ${training.endTime} ${strings.timeSuffix}',
                             style: TextStyle(
                               color: AppTheme.textSecondary,
                               fontSize: 12,
@@ -349,6 +402,18 @@ class _TrainingCard extends StatelessWidget {
                             MaterialPageRoute(
                               builder: (_) =>
                                   AttendanceHistoryScreen(training: training),
+                            ),
+                          );
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  EditTrainingScreen(training: training),
                             ),
                           );
                         },
@@ -402,13 +467,15 @@ class _TrainingCard extends StatelessWidget {
           title: training.name,
           date: targetDate,
           attendance: attendance,
+          startTime: training.startTime,
+          endTime: training.endTime,
         ),
       );
     });
   }
 
   void _confirmDelete(BuildContext context) {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -445,130 +512,136 @@ class _EventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.of(context);
-    return FutureBuilder<List<Attendance>>(
-      future: context.read<AppProvider>().getAttendanceForEvent(event.id!),
-      builder: (context, snapshot) {
-        final attendance =
-            snapshot.data != null && snapshot.data!.isNotEmpty
-                ? snapshot.data!.first
-                : null;
-        final status = attendance?.status ?? AttendanceStatus.pending;
-        final statusText = status == AttendanceStatus.pending
-            ? strings.statusOpen
-            : status == AttendanceStatus.present
-            ? strings.yes
-            : strings.no;
+    final provider = context.watch<AppProvider>();
+    final attendance = provider.getLatestOccurrenceForEvent(event.id!);
+    final status = attendance?.status ?? AttendanceStatus.pending;
+    final statusText = status == AttendanceStatus.pending
+        ? strings.statusOpen
+        : status == AttendanceStatus.present
+        ? strings.statusOnTime
+        : status == AttendanceStatus.late
+            ? strings.statusLate
+            : status == AttendanceStatus.leftEarly
+                ? strings.statusLeftEarly
+                : strings.no;
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.cardColor,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: InkWell(
-            onTap: () async {
-              final provider = context.read<AppProvider>();
-              final entry = attendance ??
-                  await provider.ensureAttendanceForEvent(
-                    eventId: event.id!,
-                    date: event.date,
-                  );
-              if (!context.mounted) return;
-              showDialog(
-                context: context,
-                builder: (_) => AttendanceDialog(
-                  title: event.name,
-                  date: event.date,
-                  attendance: entry,
-                ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell(
+        onTap: () async {
+          final provider = context.read<AppProvider>();
+          final entry = attendance ??
+              await provider.ensureAttendanceForEvent(
+                eventId: event.id!,
+                date: event.date,
               );
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 4,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          if (!context.mounted) return;
+          showDialog(
+            context: context,
+            builder: (_) => AttendanceDialog(
+              title: event.name,
+              date: event.date,
+              attendance: entry,
+              startTime: event.startTime,
+              endTime: event.endTime,
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                event.name,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                        Expanded(
+                          child: Text(
+                            event.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryDark,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                strings.eventBadge,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.textPrimary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${DateFormat('dd.MM.yyyy').format(event.date)} | ${event.startTime} - ${event.endTime} ${strings.timeSuffix}',
-                          style: TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 14,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            _StatusBadge(status: status),
-                            const SizedBox(width: 8),
-                            Text(
-                              statusText,
-                              style: TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 12,
-                              ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryDark,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            strings.eventBadge,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary,
                             ),
-                          ],
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: AppTheme.accentRed),
-                    onPressed: () {
-                      context.read<AppProvider>().deleteEvent(event.id!);
-                    },
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      '${DateFormat('dd.MM.yyyy').format(event.date)} | ${event.startTime} - ${event.endTime} ${strings.timeSuffix}',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _StatusBadge(status: status),
+                        const SizedBox(width: 8),
+                        Text(
+                          statusText,
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
+              IconButton(
+                icon: const Icon(Icons.delete, color: AppTheme.accentRed),
+                onPressed: () async {
+                  final strings = AppStrings.read(context);
+                  final confirmed = await _confirmDeleteDialog(
+                    context,
+                    title: strings.deleteEventTitle(event.name),
+                    body: strings.deleteEventBody(event.name),
+                  );
+                  if (!confirmed || !context.mounted) return;
+                  context.read<AppProvider>().deleteEvent(event.id!);
+                },
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -600,20 +673,40 @@ class _StatusBadge extends StatelessWidget {
       );
     }
     final isPresent = status == AttendanceStatus.present;
+    final isLate = status == AttendanceStatus.late;
+    final isLeftEarly = status == AttendanceStatus.leftEarly;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isPresent ? AppTheme.successLight : AppTheme.errorLight,
+        color: isPresent
+            ? AppTheme.successLight
+            : (isLate || isLeftEarly)
+                ? AppTheme.warningLight
+                : AppTheme.errorLight,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isPresent ? AppTheme.successColor : AppTheme.errorColor,
+          color: isPresent
+              ? AppTheme.successColor
+              : (isLate || isLeftEarly)
+                  ? AppTheme.warningColor
+                  : AppTheme.errorColor,
         ),
       ),
       child: Text(
-        isPresent ? strings.yes : strings.no,
+        isPresent
+            ? strings.statusOnTime
+            : isLate
+                ? strings.statusLate
+                : isLeftEarly
+                    ? strings.statusLeftEarly
+                    : strings.no,
         style: TextStyle(
-          color: isPresent ? AppTheme.successColor : AppTheme.errorColor,
+          color: isPresent
+              ? AppTheme.successColor
+              : (isLate || isLeftEarly)
+                  ? AppTheme.warningColor
+                  : AppTheme.errorColor,
           fontWeight: FontWeight.bold,
           fontSize: 12,
         ),
@@ -637,4 +730,32 @@ class _DismissBackground extends StatelessWidget {
       child: const Icon(Icons.delete, color: AppTheme.errorColor),
     );
   }
+}
+
+Future<bool> _confirmDeleteDialog(
+  BuildContext context, {
+  required String title,
+  required String body,
+}) async {
+  return (await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(AppStrings.read(context).cancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(
+                AppStrings.read(context).delete,
+                style: const TextStyle(color: AppTheme.accentRed),
+              ),
+            ),
+          ],
+        ),
+      )) ??
+      false;
 }

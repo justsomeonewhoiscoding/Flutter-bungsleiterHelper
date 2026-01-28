@@ -53,14 +53,18 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
           IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
         ],
       ),
-      body: FutureBuilder<List<Attendance>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: SafeArea(
+        child: FutureBuilder<List<Attendance>>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          final attendances = snapshot.data!;
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          final attendances =
+              snapshot.data!.where((a) => !a.date.isAfter(today)).toList();
 
           if (attendances.isEmpty) {
             return Center(
@@ -71,19 +75,20 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: attendances.length,
-            itemBuilder: (context, index) {
-              final attendance = attendances[index];
-              return _AttendanceListItem(
-                training: widget.training,
-                attendance: attendance,
-                onUpdated: _refresh,
-              );
-            },
-          );
-        },
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: attendances.length,
+              itemBuilder: (context, index) {
+                final attendance = attendances[index];
+                return _AttendanceListItem(
+                  training: widget.training,
+                  attendance: attendance,
+                  onUpdated: _refresh,
+                );
+              },
+            );
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addHistoricEntry,
@@ -115,6 +120,8 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
         title: widget.training.name,
         date: picked,
         attendance: attendance,
+        startTime: widget.training.startTime,
+        endTime: widget.training.endTime,
       ),
     );
     _refresh();
@@ -134,19 +141,24 @@ class _AttendanceListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strings = AppStrings.of(context);
     final isPresent = attendance.status == AttendanceStatus.present;
+    final isLate = attendance.status == AttendanceStatus.late;
+    final isLeftEarly = attendance.status == AttendanceStatus.leftEarly;
     final isAbsent = attendance.status == AttendanceStatus.absent;
     final accentColor = isPresent
         ? AppTheme.successColor
-        : isAbsent
-        ? AppTheme.errorColor
-        : AppTheme.textSecondary.withValues(alpha: 0.4);
+        : (isLate || isLeftEarly)
+            ? AppTheme.warningColor
+            : isAbsent
+                ? AppTheme.errorColor
+                : AppTheme.textSecondary.withValues(alpha: 0.4);
     final backgroundColor = isPresent
         ? AppTheme.successLight.withValues(alpha: 0.15)
-        : isAbsent
-        ? AppTheme.errorLight.withValues(alpha: 0.15)
-        : AppTheme.cardColor;
+        : (isLate || isLeftEarly)
+            ? AppTheme.warningLight.withValues(alpha: 0.15)
+            : isAbsent
+                ? AppTheme.errorLight.withValues(alpha: 0.15)
+                : AppTheme.cardColor;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -175,7 +187,7 @@ class _AttendanceListItem extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      training.name,
+                      attendance.nameSnapshot ?? training.name,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -188,18 +200,37 @@ class _AttendanceListItem extends StatelessWidget {
                         fontSize: 14,
                       ),
                     ),
-                    if (isPresent && attendance.lateMinutes > 0)
-                      Text(
-                        strings.lateLabel(attendance.lateMinutes),
-                        style: TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
                   ],
                 ),
               ),
-              _StatusBadge(status: attendance.status),
+              Row(
+                children: [
+                  if ((isLate && attendance.lateMinutes > 0) ||
+                      (isLeftEarly && attendance.leftEarlyMinutes > 0))
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warningLight.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        isLate
+                            ? '+${attendance.lateMinutes}'
+                            : '-${attendance.leftEarlyMinutes}',
+                        style: const TextStyle(
+                          color: AppTheme.warningColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  _StatusBadge(status: attendance.status),
+                ],
+              ),
             ],
           ),
         ),
@@ -211,9 +242,11 @@ class _AttendanceListItem extends StatelessWidget {
     await showDialog(
       context: context,
       builder: (_) => AttendanceDialog(
-        title: training.name,
+        title: attendance.nameSnapshot ?? training.name,
         date: attendance.date,
         attendance: attendance,
+        startTime: attendance.startTimeSnapshot ?? training.startTime,
+        endTime: attendance.endTimeSnapshot ?? training.endTime,
       ),
     );
     onUpdated();
@@ -246,20 +279,40 @@ class _StatusBadge extends StatelessWidget {
     }
 
     final isPresent = status == AttendanceStatus.present;
+    final isLate = status == AttendanceStatus.late;
+    final isLeftEarly = status == AttendanceStatus.leftEarly;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: isPresent ? AppTheme.successLight : AppTheme.errorLight,
+        color: isPresent
+            ? AppTheme.successLight
+            : (isLate || isLeftEarly)
+                ? AppTheme.warningLight
+                : AppTheme.errorLight,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isPresent ? AppTheme.successColor : AppTheme.errorColor,
+          color: isPresent
+              ? AppTheme.successColor
+              : (isLate || isLeftEarly)
+                  ? AppTheme.warningColor
+                  : AppTheme.errorColor,
         ),
       ),
       child: Text(
-        isPresent ? strings.yes : strings.no,
+        isPresent
+            ? strings.statusOnTime
+            : isLate
+                ? strings.statusLate
+                : isLeftEarly
+                    ? strings.statusLeftEarly
+                    : strings.no,
         style: TextStyle(
-          color: isPresent ? AppTheme.successColor : AppTheme.errorColor,
+          color: isPresent
+              ? AppTheme.successColor
+              : (isLate || isLeftEarly)
+                  ? AppTheme.warningColor
+                  : AppTheme.errorColor,
           fontWeight: FontWeight.bold,
           fontSize: 12,
         ),

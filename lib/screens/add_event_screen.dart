@@ -27,7 +27,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -39,11 +39,12 @@ class _AddEventScreenState extends State<AddEventScreen> {
           IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             // Info-Box
             Container(
               padding: const EdgeInsets.all(16),
@@ -186,7 +187,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
                 ],
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: SafeArea(
@@ -246,7 +248,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
   }
 
   void _save() {
-    final strings = AppStrings.of(context);
+    final strings = AppStrings.read(context);
     if (_nameController.text.isEmpty ||
         _selectedDate == null ||
         _startTime == null ||

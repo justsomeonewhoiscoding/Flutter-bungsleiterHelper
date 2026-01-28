@@ -6,6 +6,7 @@ class Training {
   final String startTime; // Format: "HH:mm"
   final String endTime; // Format: "HH:mm"
   final DateTime createdAt;
+  final bool isActive;
 
   Training({
     this.id,
@@ -14,6 +15,7 @@ class Training {
     required this.startTime,
     required this.endTime,
     DateTime? createdAt,
+    this.isActive = true,
   }) : createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toMap() {
@@ -24,6 +26,7 @@ class Training {
       'startTime': startTime,
       'endTime': endTime,
       'createdAt': createdAt.toIso8601String(),
+      'isActive': isActive ? 1 : 0,
     };
   }
 
@@ -38,6 +41,7 @@ class Training {
       startTime: map['startTime'] as String,
       endTime: map['endTime'] as String,
       createdAt: DateTime.parse(map['createdAt'] as String),
+      isActive: (map['isActive'] as int? ?? 1) == 1,
     );
   }
 
@@ -48,6 +52,7 @@ class Training {
     String? startTime,
     String? endTime,
     DateTime? createdAt,
+    bool? isActive,
   }) {
     return Training(
       id: id ?? this.id,
@@ -56,6 +61,7 @@ class Training {
       startTime: startTime ?? this.startTime,
       endTime: endTime ?? this.endTime,
       createdAt: createdAt ?? this.createdAt,
+      isActive: isActive ?? this.isActive,
     );
   }
 
